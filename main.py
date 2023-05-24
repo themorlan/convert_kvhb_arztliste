@@ -5,6 +5,7 @@ import json
 
 
 def convert_phone_nr(nr: str) -> str:
+    """Add +49 prefix to phone number and define a custom delimiter"""
     _nr = f"+49{nr[1:]}"
     delimiter = "/"
     _nr = delimiter.join(_nr.split("-"))
@@ -12,6 +13,7 @@ def convert_phone_nr(nr: str) -> str:
 
 
 def fill_telephone_buffer(buffer: List[str]):
+    """If either phone nr oder telefax nr is missing in list it will be appended"""
     filled_items = []
     missing_item = ""
     if len(buffer) == 0:
@@ -33,9 +35,10 @@ def fill_telephone_buffer(buffer: List[str]):
 
 
 def parse_block(block: str) -> Dict:
+    """This function categorizes the stream of strings into a python dict"""
     _result = {}
     lines = [line.strip() for line in block.split("\n")]
-    # Process first line
+    # BSNR and LANR are always in the first line and can be extracted statically
     bsnr_line = [line.strip().split(": ") for line in lines[0].split(";")]
     _result[bsnr_line[0][0]] = bsnr_line[0][1]
     _result[bsnr_line[1][0]] = bsnr_line[1][1]
@@ -46,6 +49,7 @@ def parse_block(block: str) -> Dict:
     _result["Nachname"] = lines[0].split(", ")[0]
     lines.pop(0)
 
+    # If physician has no title sometimes the next row is an empty string, sometimes it's the description of the practice
     if lines[0].startswith(" ") \
             or lines[0].startswith("Örtliche") \
             or lines[0].startswith("Überörtliche") \
@@ -55,6 +59,7 @@ def parse_block(block: str) -> Dict:
     else:
         _result["Titel"] = lines[0]
     lines.pop(0)
+    # The address lines are matched by finding the city code via regex (5-digit number)
     regex = r"\b\d{5}\b\s\b"
     address_found = False
     phone_buffer = []
@@ -63,10 +68,13 @@ def parse_block(block: str) -> Dict:
     _result["Fachgebiete"] = []
     for index, line in enumerate(lines):
         if re.search(regex, line) is not None:
+            # When finding city code we start 2 lines above, if possible
             start_index = index - 2 if index >= 2 else 0
+            # Sometimes the first row does not contain the street name. Skip to next line
             if re.match(r"\d", lines[start_index]):
                 start_index += 1
             street_string = " ".join([line.strip() for line in lines[start_index:index]])
+            # Remove whitespace if there is a suffix to street nr
             if re.search(r"\s\D+$", street_string) is not None:
                 street_string = "".join(street_string.rsplit(" ", 1))
             if not address_found:
@@ -74,6 +82,7 @@ def parse_block(block: str) -> Dict:
                 _result["PLZ"] = line.split(" ")[0]
                 _result["Ort"] = line.split(" ")[1]
                 address_found = True
+            # When finding a 2nd or consecutive city code it belongs to a Nebenbetriebtsstätte
             else:
                 _result["Nebenbetriebsstätten"].append({
                     "Strasse": street_string,
@@ -82,6 +91,7 @@ def parse_block(block: str) -> Dict:
         elif line.startswith("Telefon:") or line.startswith("Telefax:"):
             phone_buffer.append(line)
             last_phone_index = index
+        # dirty hack to join specialty names if they span more than one line
         elif re.match(r"\D", line) is not None and last_phone_index is not None:
             if len(_result["Fachgebiete"]) > 0 and \
                     (line.startswith("Arzt")
@@ -161,7 +171,9 @@ def parse_block(block: str) -> Dict:
 
 def parse_page(page) -> List:
     _result = []
-    # Create rect from coords of beginning of blocks
+    # We draw a rectangle over the single entries in the pdf page. Orientation points are the BSNR strings. If an entry
+    # is longer than one pdf page we might miss some information on Nebenbetriebsstätten. These have to be corrected
+    # manually
     delimiter = page.search_for("BSNR")
     for index, pos in enumerate(delimiter):
         start_x = pos[0]
@@ -174,10 +186,8 @@ def parse_page(page) -> List:
     return _result
 
 
-
-
 def main():
-    doc = fitz.open("gesamt_bremen.pdf")
+    doc = fitz.open("gesamt_bremerhaven.pdf") # or "gesamt_bremen.pdf"
     final_result = []
 
     # Select only a single page
@@ -188,7 +198,7 @@ def main():
     for page in doc:
         final_result.extend(parse_page(page))
 
-    with open("zuweiser_liste.json", "w", encoding="UTF-8-sig") as file:
+    with open("zuweiser_liste_bremerhaven.json", "w", encoding="UTF-8-sig") as file: # or "zuweiser_liste_bremen.json
         json.dump(final_result, file, ensure_ascii=False, indent=4)
 
 
