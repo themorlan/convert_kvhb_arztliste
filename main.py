@@ -1,11 +1,12 @@
 #TODO: Change phone number prefix
 #TODO: Nebenbetriebsstätten should be another entry for the physician
-#TODO: Sort out entries from MVZ's
 
 import fitz
 import re
 from typing import List, Dict
 import json
+
+DUPLICATES = []
 
 
 def convert_phone_nr(nr: str) -> str:
@@ -191,7 +192,13 @@ def parse_page(page) -> List:
         end_y = delimiter[index + 1][1] if index + 1 < len(delimiter) else 549
         _rect = fitz.Rect(start_x, start_y, end_x, end_y)
         text = page.get_textbox(_rect)
-        _result.append(parse_block(text))
+        block = parse_block(text)
+        global DUPLICATES
+        if (block["LANR"], block["BSNR"]) not in DUPLICATES:
+            _result.append(block)
+            DUPLICATES.append((block["LANR"], block["BSNR"]))
+        else:
+            print(block)
     return _result
 
 
