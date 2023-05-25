@@ -1,3 +1,7 @@
+#TODO: Change phone number prefix
+#TODO: Nebenbetriebsstätten should be another entry for the physician
+#TODO: Sort out entries from MVZ's
+
 import fitz
 import re
 from typing import List, Dict
@@ -6,6 +10,8 @@ import json
 
 def convert_phone_nr(nr: str) -> str:
     """Add +49 prefix to phone number and define a custom delimiter"""
+    if len(nr) == 0:
+        return ""
     _nr = f"+49{nr[1:]}"
     delimiter = "/"
     _nr = delimiter.join(_nr.split("-"))
@@ -71,7 +77,9 @@ def parse_block(block: str) -> Dict:
             # When finding city code we start 2 lines above, if possible
             start_index = index - 2 if index >= 2 else 0
             # Sometimes the first row does not contain the street name. Skip to next line
-            if re.match(r"\d", lines[start_index]):
+            if lines[start_index].startswith("Nebenbetriebsstätte:"):
+                start_index += 2
+            elif re.match(r"\d", lines[start_index]):
                 start_index += 1
             street_string = " ".join([line.strip() for line in lines[start_index:index]])
             # Remove whitespace if there is a suffix to street nr
@@ -85,6 +93,7 @@ def parse_block(block: str) -> Dict:
             # When finding a 2nd or consecutive city code it belongs to a Nebenbetriebtsstätte
             else:
                 _result["Nebenbetriebsstätten"].append({
+                    "BSNR": lines[start_index - 1],
                     "Strasse": street_string,
                     "PLZ": line.split(" ")[0],
                     "Ort": line.split(" ")[1]})
@@ -191,7 +200,7 @@ def main():
     final_result = []
 
     # Select only a single page
-    # page = doc[35]  # we want text from this page
+    # page = doc[5]  # we want text from this page
     # parse_page(page)
     # exit(0)
 
