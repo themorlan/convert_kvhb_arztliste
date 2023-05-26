@@ -1,5 +1,4 @@
 #TODO: Change phone number prefix
-#TODO: Nebenbetriebsstätten should be another entry for the physician
 
 import fitz
 import re
@@ -61,7 +60,9 @@ def parse_block(block: str) -> Dict:
             or lines[0].startswith("Örtliche") \
             or lines[0].startswith("Überörtliche") \
             or lines[0].startswith("Medizinisches") \
-            or lines[0].startswith("An"):
+            or lines[0].startswith("An") \
+            or lines[0].startswith("BS oder NBS einer KV-übergreifende") \
+            or lines[0].startswith("MVZ u. gleichz. BS o. NBS einer"):
         _result["Titel"] = ""
     else:
         _result["Titel"] = lines[0]
@@ -97,7 +98,9 @@ def parse_block(block: str) -> Dict:
                     "BSNR": lines[start_index - 1],
                     "Strasse": street_string,
                     "PLZ": line.split(" ")[0],
-                    "Ort": line.split(" ")[1]})
+                    "Ort": line.split(" ")[1],
+                    "Telefon": "",
+                    "Telefax": ""})
         elif line.startswith("Telefon:") or line.startswith("Telefax:"):
             phone_buffer.append(line)
             last_phone_index = index
@@ -203,19 +206,42 @@ def parse_page(page) -> List:
 
 
 def main():
-    doc = fitz.open("gesamt_bremerhaven.pdf") # or "gesamt_bremen.pdf"
-    final_result = []
+    for city in ["bremen", "bremerhaven"]:
+        doc = fitz.open(f"gesamt_{city}.pdf")
+        final_result = []
 
-    # Select only a single page
-    # page = doc[5]  # we want text from this page
-    # parse_page(page)
-    # exit(0)
+        # Select only a single page
+        # page = doc[5]  # we want text from this page
+        # parse_page(page)
+        # exit(0)
 
-    for page in doc:
-        final_result.extend(parse_page(page))
+        for page in doc:
+            final_result.extend(parse_page(page))
 
-    with open("zuweiser_liste_bremerhaven.json", "w", encoding="UTF-8-sig") as file: # or "zuweiser_liste_bremen.json
-        json.dump(final_result, file, ensure_ascii=False, indent=4)
+        # New entry for every Nebenbetriebsstätte
+        nbs_list = []
+        for _dict in final_result:
+            if len(_dict["Nebenbetriebsstätten"]) > 0:
+                for nbs in _dict["Nebenbetriebsstätten"]:
+                    if nbs['BSNR'] != _dict['BSNR']:
+                        _new_entry = {'BSNR': nbs['BSNR'],
+                                      'LANR': _dict['LANR'],
+                                      'Vorname': _dict['Vorname'],
+                                      'Nachname': _dict['Nachname'],
+                                      'Titel': _dict['Titel'],
+                                      'Fachgebiete': _dict['Fachgebiete'],
+                                      'Strasse': nbs['Strasse'],
+                                      'PLZ': nbs['PLZ'],
+                                      'Ort': nbs['Ort'],
+                                      'Telefon': nbs['Telefon'],
+                                      'Telefax': nbs['Telefax']}
+                        nbs_list.append(_new_entry)
+            del _dict["Nebenbetriebsstätten"]
+
+        final_result.extend(nbs_list)
+
+        with open(f"zuweiser_liste_{city}.json", "w", encoding="UTF-8-sig") as file:
+            json.dump(final_result, file, ensure_ascii=False, indent=4)
 
 
 if __name__ == "__main__":
